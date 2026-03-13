@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { LLMClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
+import { splitByRules } from './splitByRules';
 
 // 报幕信息正则模式
 const BAOMU_PATTERNS = [
@@ -152,8 +153,21 @@ function optimizeAfterSplit(lines: string[], maxChars: number): string[] {
   return result;
 }
 
-// 使用 LLM 进行语义拆分
+// 使用基于规则的语义拆分（替代 LLM）
+function splitByRulesWrapper(line: string, maxChars: number): string[] {
+  try {
+    return splitByRules(line, maxChars);
+  } catch (error) {
+    console.error('规则拆分失败，使用简单拆分：', error);
+    return simpleSplit(line, maxChars);
+  }
+}
+
+// 使用 LLM 进行语义拆分（已禁用，使用规则拆分替代）
 async function splitWithLLM(line: string, maxChars: number, customHeaders?: Record<string, string>): Promise<string[]> {
+  console.log('[LLM拆分] LLM拆分已禁用，使用规则拆分替代');
+  return splitByRulesWrapper(line, maxChars);
+}
   // 【KY005 修复】检查字数是否超过限制，未超过则直接返回
   const charCount = countChineseChars(line);
   if (charCount <= maxChars) {
