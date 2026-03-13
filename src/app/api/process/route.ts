@@ -161,6 +161,9 @@ async function splitWithLLM(line: string, maxChars: number): Promise<string[]> {
     return [line];
   }
 
+  console.log(`[LLM拆分] 开始拆分，文本长度: ${charCount}字，限制: ${maxChars}字`);
+  console.log(`[LLM拆分] 文本内容: ${line}`);
+
   try {
     const config = new Config();
     const client = new LLMClient(config);
@@ -214,35 +217,46 @@ async function splitWithLLM(line: string, maxChars: number): Promise<string[]> {
       { role: 'user' as const, content: `请将以下文本拆分成多行，每行≤${maxChars}字：\n\n${line}` }
     ];
 
+    console.log(`[LLM拆分] 调用 LLM...`);
     const response = await client.invoke(messages, {
       model: 'doubao-seed-1-8-251228',
       temperature: 0,
     });
 
+    console.log(`[LLM拆分] LLM 响应:`, response.content);
+
     const result = response.content.trim();
     const lines = result.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+    console.log(`[LLM拆分] 拆分结果: ${JSON.stringify(lines)}`);
 
     // 验证字符数是否一致
     const originalCharCount = countChineseChars(line);
     const resultCharCount = lines.reduce((sum, l) => sum + countChineseChars(l), 0);
 
+    console.log(`[LLM拆分] 字符数验证: 原始${originalCharCount}字，结果${resultCharCount}字`);
+
     if (originalCharCount !== resultCharCount) {
-      console.warn(`LLM拆分字符数不一致：原始${originalCharCount}字，结果${resultCharCount}字，使用简单拆分`);
+      console.warn(`[LLM拆分] 字符数不一致，使用简单拆分`);
       return simpleSplit(line, maxChars);
     }
 
     // 【优化】合并相邻的短行，追求行数最少，每行尽可能接近 maxChars
     const optimizedLines = optimizeAfterSplit(lines, maxChars);
 
+    console.log(`[LLM拆分] 优化后结果: ${JSON.stringify(optimizedLines)}`);
+
     return optimizedLines;
   } catch (error) {
-    console.error('LLM拆分失败，使用简单拆分：', error);
+    console.error('[LLM拆分] 拆分失败，使用简单拆分，错误:', error);
     return simpleSplit(line, maxChars);
   }
 }
 
 // 简单拆分（备用方案）
 function simpleSplit(line: string, maxChars: number): string[] {
+  console.warn(`[简单拆分] 使用简单拆分（非语义），文本: ${line.substring(0, 30)}...，限制: ${maxChars}字`);
+
   const result: string[] = [];
   let current = '';
 
@@ -261,8 +275,12 @@ function simpleSplit(line: string, maxChars: number): string[] {
     result.push(current);
   }
 
+  console.warn(`[简单拆分] 简单拆分结果: ${JSON.stringify(result)}`);
+
   // 【优化】合并相邻的短行，追求行数最少
   const optimizedLines = optimizeAfterSplit(result, maxChars);
+
+  console.warn(`[简单拆分] 优化后结果: ${JSON.stringify(optimizedLines)}`);
 
   return optimizedLines;
 }
