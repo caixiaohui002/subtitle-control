@@ -158,13 +158,16 @@ async function splitWithLLM(line: string, maxChars: number, customHeaders?: Reco
 
   try {
     // 创建 LLM 客户端
+    // 明确传递 API Key，确保使用 Coze API
     const config = new Config({
+      apiKey: process.env.COZE_WORKLOAD_IDENTITY_API_KEY,
       timeout: 60000, // 60秒超时（Vercel付费版限制）
     });
 
     console.log('[LLM拆分] 创建LLM客户端，timeout: 60000ms');
     console.log('[LLM拆分] 环境变量 COZE_WORKLOAD_IDENTITY_API_KEY:', process.env.COZE_WORKLOAD_IDENTITY_API_KEY ? '已设置' : '未设置');
     console.log('[LLM拆分] 自定义Headers:', JSON.stringify(customHeaders));
+    console.log('[LLM拆分] Config中API Key:', config.apiKey ? '已设置' : '未设置');
 
     const llmClient = new LLMClient(config, customHeaders);
 

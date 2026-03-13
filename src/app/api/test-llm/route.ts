@@ -11,8 +11,11 @@ export async function POST(request: NextRequest) {
 
     // 创建 LLM 客户端
     const config = new Config({
+      apiKey: process.env.COZE_WORKLOAD_IDENTITY_API_KEY,
       timeout: 30000, // 30 秒超时
     });
+
+    console.log('[TEST LLM] Config apiKey:', !!config.apiKey);
 
     const llmClient = new LLMClient(config, customHeaders);
 
@@ -33,6 +36,7 @@ export async function POST(request: NextRequest) {
     });
 
     const response = await llmClient.invoke(messages, {
+      model: 'doubao-seed-2-0-lite-260215',
       temperature: 0.7,
     });
 
