@@ -12,10 +12,14 @@ export async function POST(request: NextRequest) {
     // 创建 LLM 客户端
     const config = new Config({
       apiKey: process.env.COZE_WORKLOAD_IDENTITY_API_KEY,
+      baseUrl: process.env.COZE_INTEGRATION_BASE_URL || 'https://api.coze.com',
+      modelBaseUrl: process.env.COZE_INTEGRATION_MODEL_BASE_URL || 'https://model.coze.com',
       timeout: 30000, // 30 秒超时
     });
 
     console.log('[TEST LLM] Config apiKey:', !!config.apiKey);
+    console.log('[TEST LLM] Config baseUrl:', config.baseUrl);
+    console.log('[TEST LLM] Config modelBaseUrl:', config.modelBaseUrl);
 
     const llmClient = new LLMClient(config, customHeaders);
 
