@@ -121,9 +121,12 @@ export function splitByRules(line: string, maxChars: number): string[] {
 function fixSplitPhrases(lines: string[], maxChars: number): string[] {
   const result: string[] = [...lines];
   let fixed = true;
+  let iterations = 0;
+  const MAX_ITERATIONS = 100; // 防止无限循环
 
-  while (fixed) {
+  while (fixed && iterations < MAX_ITERATIONS) {
     fixed = false;
+    iterations++;
 
     for (let i = 0; i < result.length - 1; i++) {
       const currentLine = result[i];
@@ -134,19 +137,38 @@ function fixSplitPhrases(lines: string[], maxChars: number): string[] {
       
       // 检查是否有常见短语被拆分
       let foundPhrase = '';
+      let phraseIndex = -1;
       for (const phrase of COMMON_PHRASES) {
-        if (combined.includes(phrase)) {
+        const idx = combined.indexOf(phrase);
+        if (idx !== -1) {
           foundPhrase = phrase;
+          phraseIndex = idx;
           break;
         }
       }
       
       if (foundPhrase) {
+        // 检查短语是否跨行（关键修复：只有跨行才修复）
+        const phraseStartIndex = phraseIndex;
+        const phraseEndIndex = phraseIndex + foundPhrase.length;
+        
+        // 如果短语完全在第一行中，不需要修复
+        if (phraseEndIndex <= currentLine.length) {
+          console.log(`[规则拆分] 短语 "${foundPhrase}" 完全在第一行中，无需修复`);
+          continue;
+        }
+        
+        // 如果短语完全在第二行中，不需要修复
+        if (phraseStartIndex >= currentLine.length) {
+          console.log(`[规则拆分] 短语 "${foundPhrase}" 完全在第二行中，无需修复`);
+          continue;
+        }
+        
+        // 短语跨行，需要修复
         console.log(`[规则拆分] 发现被拆分的短语: "${foundPhrase}"`);
         console.log(`[规则拆分] 合并前: "${currentLine}" + "${nextLine}"`);
         
         // 尝试在短语的边界拆分
-        const phraseIndex = combined.indexOf(foundPhrase);
         const beforePhrase = combined.substring(0, phraseIndex);
         const afterPhrase = combined.substring(phraseIndex + foundPhrase.length);
         
@@ -169,6 +191,10 @@ function fixSplitPhrases(lines: string[], maxChars: number): string[] {
         }
       }
     }
+  }
+  
+  if (iterations >= MAX_ITERATIONS) {
+    console.log(`[规则拆分] 警告：达到最大迭代次数 ${MAX_ITERATIONS}，停止修复`);
   }
   
   return result;
