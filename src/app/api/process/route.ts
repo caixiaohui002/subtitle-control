@@ -158,8 +158,10 @@ async function splitWithLLM(line: string, maxChars: number, customHeaders?: Reco
 
   try {
     // 创建 LLM 客户端
-    // 尝试使用默认配置，让 SDK 自动从环境变量加载配置
+    // 明确设置 baseUrl，不设置 modelBaseUrl
     const config = new Config({
+      apiKey: process.env.COZE_WORKLOAD_IDENTITY_API_KEY,
+      baseUrl: 'https://api.coze.com',  // 明确使用 Coze API
       timeout: 60000, // 60秒超时（Vercel付费版限制）
     });
 
