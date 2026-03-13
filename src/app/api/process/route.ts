@@ -163,6 +163,7 @@ async function splitWithLLM(line: string, maxChars: number, customHeaders?: Reco
     });
 
     console.log('[LLM拆分] 创建LLM客户端，timeout: 60000ms');
+    console.log('[LLM拆分] 环境变量 COZE_WORKLOAD_IDENTITY_API_KEY:', process.env.COZE_WORKLOAD_IDENTITY_API_KEY ? '已设置' : '未设置');
     console.log('[LLM拆分] 自定义Headers:', JSON.stringify(customHeaders));
 
     const llmClient = new LLMClient(config, customHeaders);
@@ -198,6 +199,7 @@ ${JSON.stringify({
         }
       ],
       {
+        model: 'doubao-seed-2-0-lite-260215',
         temperature: 0.3, // 降低随机性
       }
     );
