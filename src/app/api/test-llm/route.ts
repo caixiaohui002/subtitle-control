@@ -10,11 +10,11 @@ export async function POST(request: NextRequest) {
     const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
 
     // 创建 LLM 客户端
-    // 明确设置 baseUrl，不设置 modelBaseUrl
+    // 尝试使用 OpenAI 兼容的配置方式
     const config = new Config({
       apiKey: process.env.COZE_WORKLOAD_IDENTITY_API_KEY,
       baseUrl: 'https://api.coze.com',
-      timeout: 30000, // 30 秒超时
+      timeout: 30000,
     });
 
     console.log('[TEST LLM] 环境变量检查:', {
@@ -22,12 +22,19 @@ export async function POST(request: NextRequest) {
       COZE_INTEGRATION_BASE_URL: process.env.COZE_INTEGRATION_BASE_URL,
       COZE_INTEGRATION_MODEL_BASE_URL: process.env.COZE_INTEGRATION_MODEL_BASE_URL,
       COZE_WORKLOAD_IDENTITY_TOKEN_ENDPOINT: process.env.COZE_WORKLOAD_IDENTITY_TOKEN_ENDPOINT,
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
     });
     console.log('[TEST LLM] Config配置:', {
       apiKey: !!config.apiKey,
       baseUrl: config.baseUrl,
       modelBaseUrl: config.modelBaseUrl,
     });
+
+    // 尝试设置 OPENAI_BASE_URL 环境变量
+    process.env.OPENAI_BASE_URL = 'https://api.coze.com';
+    process.env.OPENAI_API_KEY = process.env.COZE_WORKLOAD_IDENTITY_API_KEY || '';
+    console.log('[TEST LLM] 设置 OPENAI_BASE_URL 和 OPENAI_API_KEY');
 
     const llmClient = new LLMClient(config, customHeaders);
 

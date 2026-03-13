@@ -158,11 +158,11 @@ async function splitWithLLM(line: string, maxChars: number, customHeaders?: Reco
 
   try {
     // 创建 LLM 客户端
-    // 明确设置 baseUrl，不设置 modelBaseUrl
+    // 尝试使用 OpenAI 兼容的配置方式
     const config = new Config({
       apiKey: process.env.COZE_WORKLOAD_IDENTITY_API_KEY,
-      baseUrl: 'https://api.coze.com',  // 明确使用 Coze API
-      timeout: 60000, // 60秒超时（Vercel付费版限制）
+      baseUrl: 'https://api.coze.com',
+      timeout: 60000,
     });
 
     console.log('[LLM拆分] 创建LLM客户端，timeout: 60000ms');
@@ -171,6 +171,8 @@ async function splitWithLLM(line: string, maxChars: number, customHeaders?: Reco
       COZE_INTEGRATION_BASE_URL: process.env.COZE_INTEGRATION_BASE_URL,
       COZE_INTEGRATION_MODEL_BASE_URL: process.env.COZE_INTEGRATION_MODEL_BASE_URL,
       COZE_WORKLOAD_IDENTITY_TOKEN_ENDPOINT: process.env.COZE_WORKLOAD_IDENTITY_TOKEN_ENDPOINT,
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
     });
     console.log('[LLM拆分] Config配置:', {
       apiKey: !!config.apiKey,
@@ -179,6 +181,11 @@ async function splitWithLLM(line: string, maxChars: number, customHeaders?: Reco
       timeout: config.timeout,
     });
     console.log('[LLM拆分] 自定义Headers:', JSON.stringify(customHeaders));
+
+    // 尝试设置 OPENAI_BASE_URL 环境变量
+    process.env.OPENAI_BASE_URL = 'https://api.coze.com';
+    process.env.OPENAI_API_KEY = process.env.COZE_WORKLOAD_IDENTITY_API_KEY || '';
+    console.log('[LLM拆分] 设置 OPENAI_BASE_URL 和 OPENAI_API_KEY');
 
     const llmClient = new LLMClient(config, customHeaders);
 
