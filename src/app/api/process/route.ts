@@ -156,15 +156,19 @@ function optimizeAfterSplit(lines: string[], maxChars: number): string[] {
 async function splitWithLLM(line: string, maxChars: number, customHeaders?: Record<string, string>): Promise<string[]> {
   console.log('[LLM拆分] 开始LLM拆分，文本长度:', line.length);
 
-  // 创建 LLM 客户端
-  const config = new Config({
-    timeout: 60000, // 60秒超时（Vercel付费版限制）
-  });
+  try {
+    // 创建 LLM 客户端
+    const config = new Config({
+      timeout: 60000, // 60秒超时（Vercel付费版限制）
+    });
 
-  const llmClient = new LLMClient(config, customHeaders);
+    console.log('[LLM拆分] 创建LLM客户端，timeout: 60000ms');
+    console.log('[LLM拆分] 自定义Headers:', JSON.stringify(customHeaders));
 
-  // 构建提示词
-  const prompt = `你是一个专业的文本拆分助手。请将以下文本拆分成多行，要求：
+    const llmClient = new LLMClient(config, customHeaders);
+
+    // 构建提示词
+    const prompt = `你是一个专业的文本拆分助手。请将以下文本拆分成多行，要求：
 1. 每行纯汉字数严格≤${maxChars}字
 2. 按语义边界拆分（如主谓宾结构、短语边界），保持短语完整性
 3. 保护成语、固定短语不被拆分
@@ -181,40 +185,57 @@ ${JSON.stringify({
   ]
 })}`;
 
-  const response = await llmClient.invoke(
-    [
+    console.log('[LLM拆分] 开始调用LLM...');
+    const response = await llmClient.invoke(
+      [
+        {
+          role: 'system' as const,
+          content: '你是一个专业的文本拆分助手，只返回JSON格式，不包含其他文字。'
+        },
+        {
+          role: 'user' as const,
+          content: prompt
+        }
+      ],
       {
-        role: 'system' as const,
-        content: '你是一个专业的文本拆分助手，只返回JSON格式，不包含其他文字。'
-      },
-      {
-        role: 'user' as const,
-        content: prompt
+        temperature: 0.3, // 降低随机性
       }
-    ],
-    {
-      temperature: 0.3, // 降低随机性
+    );
+
+    console.log('[LLM拆分] LLM调用成功');
+    console.log('[LLM拆分] 响应类型:', typeof response);
+    console.log('[LLM拆分] 响应内容长度:', response?.content?.length || 0);
+
+    const resultText = response.content || '';
+    console.log('[LLM拆分] LLM返回前200字符:', resultText.substring(0, 200));
+
+    // 解析 JSON
+    const jsonMatch = resultText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error('[LLM拆分] 无法在响应中找到JSON格式');
+      console.error('[LLM拆分] 完整响应:', resultText);
+      throw new Error('LLM返回的不是JSON格式');
     }
-  );
 
-  const resultText = response.content || '';
-  console.log('[LLM拆分] LLM返回:', resultText.substring(0, 200));
+    const jsonText = jsonMatch[0];
+    const result = JSON.parse(jsonText);
 
-  // 解析 JSON
-  const jsonMatch = resultText.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error('LLM返回的不是JSON格式');
+    if (!result.lines || !Array.isArray(result.lines)) {
+      console.error('[LLM拆分] JSON解析结果:', JSON.stringify(result));
+      throw new Error('LLM返回格式错误：缺少lines字段');
+    }
+
+    console.log('[LLM拆分] 拆分成功，共', result.lines.length, '行');
+    return result.lines;
+  } catch (error) {
+    console.error('[LLM拆分] LLM调用失败:', error);
+    if (error instanceof Error) {
+      console.error('[LLM拆分] 错误名称:', error.name);
+      console.error('[LLM拆分] 错误消息:', error.message);
+      console.error('[LLM拆分] 错误堆栈:', error.stack);
+    }
+    throw error; // 重新抛出错误，让外层处理
   }
-
-  const jsonText = jsonMatch[0];
-  const result = JSON.parse(jsonText);
-
-  if (!result.lines || !Array.isArray(result.lines)) {
-    throw new Error('LLM返回格式错误：缺少lines字段');
-  }
-
-  console.log('[LLM拆分] 拆分成功，共', result.lines.length, '行');
-  return result.lines;
 }
 
 // 简单拆分（备用方案）
@@ -473,11 +494,26 @@ export async function POST(request: NextRequest) {
         controller.close();
       } catch (error) {
         console.error('处理文本时出错:', error);
+
+        // 打印详细错误信息
+        if (error instanceof Error) {
+          console.error('错误名称:', error.name);
+          console.error('错误消息:', error.message);
+          console.error('错误堆栈:', error.stack);
+        } else {
+          console.error('错误详情:', JSON.stringify(error));
+        }
+
         // 检查是否是中断错误
         if (error instanceof Error && error.message === '处理被用户取消') {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', message: '处理已取消' })}\n\n`));
         } else {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', message: '处理失败，请稍后重试' })}\n\n`));
+          // 尝试提取更有用的错误信息
+          let errorMessage = '处理失败，请稍后重试';
+          if (error instanceof Error) {
+            errorMessage = error.message || errorMessage;
+          }
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', message: errorMessage })}\n\n`));
         }
         controller.close();
       }
