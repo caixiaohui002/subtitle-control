@@ -173,12 +173,18 @@ async function splitWithLLM(line: string, maxChars: number): Promise<string[]> {
 【核心规则】
 1. 每行严格≤${maxChars}字
 2. 100%保留所有字符，不能遗漏、增加或改变
-3. 保持成语完整性（如：平安顺遂、兴高采烈、坚持不懈）
-4. 保持固定短语完整性（如：三个头、三个落水儿童）
-5. 保持动宾结构完整性（如：磕了三个头、救了三个儿童）
-6. 按语义边界拆分（主谓之间、谓宾之间、并列短语、修饰关系）
-7. 【重要】追求行数最少化，避免过度拆分
-8. 【重要】每行尽可能接近${maxChars}字，不要拆分得太短
+3. 【最重要】保持成语完整性（如：平安顺遂、兴高采烈、坚持不懈、恭恭敬敬）
+4. 【最重要】保持固定短语完整性（如：三个头、三个落水儿童、对着老槐树）
+5. 【最重要】保持动宾结构完整性（如：磕了三个头、救了三个儿童、对着老槐树磕头）
+6. 【最重要】按语义边界拆分（主谓之间、谓宾之间、并列短语、修饰关系）
+7. 追求行数最少化，避免过度拆分
+8. 每行尽可能接近${maxChars}字，不要拆分得太短
+
+【绝对禁止】
+- ❌ 禁止将成语拆成两行（例如："平安顺遂"不能拆成"平安顺"+"遂"）
+- ❌ 禁止将固定短语拆开（例如："三个头"不能拆成"三个"+"头"）
+- ❌ 禁止将动宾结构拆开（例如："磕了三个头"不能拆成"磕了三个"+"头"）
+- ❌ 禁止将介宾结构拆开（例如："对着老槐树"不能拆成"对着老"+"槐树"）
 
 【正确示例】
 输入：相信它能庇佑全村人平安顺遂董永特意停下脚步恭恭敬敬对着老槐树磕了三个头
@@ -195,7 +201,13 @@ async function splitWithLLM(line: string, maxChars: number): Promise<string[]> {
 我救了三个落水儿童
 获得了见义勇为奖
 
-【反例（不要这样拆分）】
+输入：恭恭敬敬对着老槐树磕了三个头额头磕得微微发红
+输出：
+恭恭敬敬对着老槐树
+磕了三个头
+额头磕得微微发红
+
+【反例（绝对不要这样拆分）】
 输入：被林浩手下的人以内部高息理财的名义
 错误输出：
 被林浩手下的人
@@ -206,10 +218,19 @@ async function splitWithLLM(line: string, maxChars: number): Promise<string[]> {
 被林浩手下的人以内部高息
 理财的名义
 
+输入：恭恭敬敬对着老槐树磕了三个头
+错误输出：
+恭恭敬敬对着老槐树磕了三
+个头
+正确输出：
+恭恭敬敬对着老槐树
+磕了三个头
+
 【输出要求】
 - 只返回拆分后的行，用换行符分隔
 - 不要有任何解释或其他文字
 - 确保每一行都是语义完整的片段
+- 确保成语、固定短语、动宾结构不被拆分
 - 确保行数最少，每行尽可能接近${maxChars}字`;
 
     const messages = [
@@ -241,12 +262,14 @@ async function splitWithLLM(line: string, maxChars: number): Promise<string[]> {
       return simpleSplit(line, maxChars);
     }
 
-    // 【优化】合并相邻的短行，追求行数最少，每行尽可能接近 maxChars
-    const optimizedLines = optimizeAfterSplit(lines, maxChars);
+    // 【禁用】合并相邻的短行，避免破坏语义拆分结果
+    // const optimizedLines = optimizeAfterSplit(lines, maxChars);
+    // console.log(`[LLM拆分] 优化后结果: ${JSON.stringify(optimizedLines)}`);
+    // return optimizedLines;
 
-    console.log(`[LLM拆分] 优化后结果: ${JSON.stringify(optimizedLines)}`);
-
-    return optimizedLines;
+    // 直接返回 LLM 的拆分结果，不做任何优化
+    console.log(`[LLM拆分] 直接返回 LLM 拆分结果（不做优化）`);
+    return lines;
   } catch (error) {
     console.error('[LLM拆分] 拆分失败，使用简单拆分，错误:', error);
     return simpleSplit(line, maxChars);
@@ -277,12 +300,13 @@ function simpleSplit(line: string, maxChars: number): string[] {
 
   console.warn(`[简单拆分] 简单拆分结果: ${JSON.stringify(result)}`);
 
-  // 【优化】合并相邻的短行，追求行数最少
-  const optimizedLines = optimizeAfterSplit(result, maxChars);
+  // 【禁用】合并相邻的短行，避免破坏语义
+  // const optimizedLines = optimizeAfterSplit(result, maxChars);
+  // console.warn(`[简单拆分] 优化后结果: ${JSON.stringify(optimizedLines)}`);
+  // return optimizedLines;
 
-  console.warn(`[简单拆分] 优化后结果: ${JSON.stringify(optimizedLines)}`);
-
-  return optimizedLines;
+  // 直接返回简单拆分结果
+  return result;
 }
 
 
