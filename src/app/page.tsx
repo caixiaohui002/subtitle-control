@@ -42,17 +42,6 @@ export default function TextProcessor() {
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
-    // 添加前端超时处理（60秒）
-    const timeoutId = setTimeout(() => {
-      abortController.abort();
-      setError('处理超时，请稍后重试');
-      setIsProcessing(false);
-      setProgressStep('');
-      setProgressMessage('');
-      setProgressPercent(0);
-      abortControllerRef.current = null;
-    }, 60000);
-
     try {
       const response = await fetch('/api/process', {
         method: 'POST',
@@ -98,7 +87,6 @@ export default function TextProcessor() {
                 result = data.content;
                 setOutputText(result);
                 setProcessingDuration(data.duration || '');
-                clearTimeout(timeoutId); // 成功完成，清除超时
               } else if (data.type === 'progress') {
                 setProgressStep(data.step || '');
                 setProgressMessage(data.message || '');
@@ -109,7 +97,6 @@ export default function TextProcessor() {
               } else if (data.type === 'debug') {
                 console.log('[DEBUG]', data.message);
               } else if (data.type === 'error') {
-                clearTimeout(timeoutId); // 错误时清除超时
                 throw new Error(data.message || '处理失败');
               }
             } catch (parseError) {
@@ -120,7 +107,6 @@ export default function TextProcessor() {
       }
     } catch (err) {
       // 检查是否是用户主动取消
-      clearTimeout(timeoutId); // 异常时清除超时
       if (err instanceof Error && err.name === 'AbortError') {
         setError('处理已取消');
       } else {
