@@ -184,11 +184,11 @@ ${JSON.stringify({
   const response = await llmClient.invoke(
     [
       {
-        role: 'system',
+        role: 'system' as const,
         content: '你是一个专业的文本拆分助手，只返回JSON格式，不包含其他文字。'
       },
       {
-        role: 'user',
+        role: 'user' as const,
         content: prompt
       }
     ],

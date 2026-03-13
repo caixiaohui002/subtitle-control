@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     // 测试调用
     const messages = [
       {
-        role: 'user',
+        role: 'user' as const,
         content: prompt || '请说一句话，测试 LLM 是否正常工作。'
       }
     ];
