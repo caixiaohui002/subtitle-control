@@ -10,16 +10,22 @@ export async function POST(request: NextRequest) {
     const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
 
     // 创建 LLM 客户端
-    // 注意：只设置 baseUrl，不设置 modelBaseUrl，因为 model.coze.com 域名无法解析
+    // 尝试使用默认配置，让 SDK 自动从环境变量加载配置
     const config = new Config({
-      apiKey: process.env.COZE_WORKLOAD_IDENTITY_API_KEY,
-      baseUrl: process.env.COZE_INTEGRATION_BASE_URL || 'https://api.coze.com',
       timeout: 30000, // 30 秒超时
     });
 
-    console.log('[TEST LLM] Config apiKey:', !!config.apiKey);
-    console.log('[TEST LLM] Config baseUrl:', config.baseUrl);
-    console.log('[TEST LLM] Config modelBaseUrl:', config.modelBaseUrl);
+    console.log('[TEST LLM] 环境变量检查:', {
+      COZE_WORKLOAD_IDENTITY_API_KEY: !!process.env.COZE_WORKLOAD_IDENTITY_API_KEY,
+      COZE_INTEGRATION_BASE_URL: process.env.COZE_INTEGRATION_BASE_URL,
+      COZE_INTEGRATION_MODEL_BASE_URL: process.env.COZE_INTEGRATION_MODEL_BASE_URL,
+      COZE_WORKLOAD_IDENTITY_TOKEN_ENDPOINT: process.env.COZE_WORKLOAD_IDENTITY_TOKEN_ENDPOINT,
+    });
+    console.log('[TEST LLM] Config配置:', {
+      apiKey: !!config.apiKey,
+      baseUrl: config.baseUrl,
+      modelBaseUrl: config.modelBaseUrl,
+    });
 
     const llmClient = new LLMClient(config, customHeaders);
 

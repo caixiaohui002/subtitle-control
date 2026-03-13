@@ -158,20 +158,24 @@ async function splitWithLLM(line: string, maxChars: number, customHeaders?: Reco
 
   try {
     // 创建 LLM 客户端
-    // 注意：只设置 baseUrl，不设置 modelBaseUrl，因为 model.coze.com 域名无法解析
+    // 尝试使用默认配置，让 SDK 自动从环境变量加载配置
     const config = new Config({
-      apiKey: process.env.COZE_WORKLOAD_IDENTITY_API_KEY,
-      baseUrl: process.env.COZE_INTEGRATION_BASE_URL || 'https://api.coze.com',
       timeout: 60000, // 60秒超时（Vercel付费版限制）
     });
 
     console.log('[LLM拆分] 创建LLM客户端，timeout: 60000ms');
-    console.log('[LLM拆分] 环境变量 COZE_WORKLOAD_IDENTITY_API_KEY:', process.env.COZE_WORKLOAD_IDENTITY_API_KEY ? '已设置' : '未设置');
-    console.log('[LLM拆分] 环境变量 COZE_INTEGRATION_BASE_URL:', process.env.COZE_INTEGRATION_BASE_URL || 'https://api.coze.com');
-    console.log('[LLM拆分] 环境变量 COZE_INTEGRATION_MODEL_BASE_URL:', process.env.COZE_INTEGRATION_MODEL_BASE_URL);
-    console.log('[LLM拆分] Config中API Key:', !!config.apiKey);
-    console.log('[LLM拆分] Config中baseUrl:', config.baseUrl);
-    console.log('[LLM拆分] Config中modelBaseUrl:', config.modelBaseUrl);
+    console.log('[LLM拆分] 环境变量检查:', {
+      COZE_WORKLOAD_IDENTITY_API_KEY: !!process.env.COZE_WORKLOAD_IDENTITY_API_KEY,
+      COZE_INTEGRATION_BASE_URL: process.env.COZE_INTEGRATION_BASE_URL,
+      COZE_INTEGRATION_MODEL_BASE_URL: process.env.COZE_INTEGRATION_MODEL_BASE_URL,
+      COZE_WORKLOAD_IDENTITY_TOKEN_ENDPOINT: process.env.COZE_WORKLOAD_IDENTITY_TOKEN_ENDPOINT,
+    });
+    console.log('[LLM拆分] Config配置:', {
+      apiKey: !!config.apiKey,
+      baseUrl: config.baseUrl,
+      modelBaseUrl: config.modelBaseUrl,
+      timeout: config.timeout,
+    });
     console.log('[LLM拆分] 自定义Headers:', JSON.stringify(customHeaders));
 
     const llmClient = new LLMClient(config, customHeaders);
