@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { LLMClient, Config } from 'coze-coding-dev-sdk';
+import { LLMClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
 
 // 报幕信息正则模式
 const BAOMU_PATTERNS = [
@@ -153,7 +153,7 @@ function optimizeAfterSplit(lines: string[], maxChars: number): string[] {
 }
 
 // 使用 LLM 进行语义拆分
-async function splitWithLLM(line: string, maxChars: number): Promise<string[]> {
+async function splitWithLLM(line: string, maxChars: number, customHeaders?: Record<string, string>): Promise<string[]> {
   // 【KY005 修复】检查字数是否超过限制，未超过则直接返回
   const charCount = countChineseChars(line);
   if (charCount <= maxChars) {
@@ -166,58 +166,67 @@ async function splitWithLLM(line: string, maxChars: number): Promise<string[]> {
 
   try {
     const config = new Config();
-    const client = new LLMClient(config);
+    const client = new LLMClient(config, customHeaders);
 
-    const systemPrompt = `【任务】按照语义边界将文本拆分成多行，保证每个片段都是完整的语义单元。
+    const systemPrompt = `【任务】将文本按照语义边界拆分成多行，每行不超过${maxChars}字。
 
-【核心规则】
-1. 每行严格≤${maxChars}字
+【核心要求】
+1. 每行严格≤${maxChars}个汉字
 2. 100%保留所有字符，不能遗漏、增加或改变
-3. 【最重要】保持成语完整性（如：平安顺遂、兴高采烈、坚持不懈、恭恭敬敬）
-4. 【最重要】保持固定短语完整性（如：三个头、三个落水儿童、对着老槐树）
-5. 【最重要】保持动宾结构完整性（如：磕了三个头、救了三个儿童、对着老槐树磕头）
-6. 【最重要】按语义边界拆分（主谓之间、谓宾之间、并列短语、修饰关系）
-7. 追求行数最少化，避免过度拆分
-8. 每行尽可能接近${maxChars}字，不要拆分得太短
+3. 必须保持成语完整（如：平安顺遂、兴高采烈、坚持不懈、恭恭敬敬）
+4. 必须保持固定短语完整（如：三个头、对着老槐树、微微发红）
+5. 必须保持动宾结构完整（如：磕了三个头、救了三个儿童）
+6. 按语义边界拆分（主谓之间、谓宾之间、并列短语、修饰关系）
 
-【绝对禁止】
-- ❌ 禁止将成语拆成两行（例如："平安顺遂"不能拆成"平安顺"+"遂"）
-- ❌ 禁止将固定短语拆开（例如："三个头"不能拆成"三个"+"头"）
-- ❌ 禁止将动宾结构拆开（例如："磕了三个头"不能拆成"磕了三个"+"头"）
-- ❌ 禁止将介宾结构拆开（例如："对着老槐树"不能拆成"对着老"+"槐树"）
+【禁止拆分的结构】
+- ❌ 四字成语：不能拆分成两行
+- ❌ 动宾短语：如"磕了三个头"不能拆成"磕了三个"+"头"
+- ❌ 介宾短语：如"对着老槐树"不能拆成"对着老"+"槐树"
+- ❌ 固定搭配：如"微微发红"不能拆成"微微"+"发红"
+
+【拆分策略】
+1. 优先在句子的停顿处拆分（主谓之间、谓宾之间）
+2. 其次在短语的边界拆分（并列短语、修饰关系）
+3. 如果必须拆分长句，尽量保持词语完整
 
 【正确示例】
+
+示例1：
 输入：相信它能庇佑全村人平安顺遂董永特意停下脚步恭恭敬敬对着老槐树磕了三个头
-输出：
+输出（每行≤12字）：
 相信它能庇佑全村人
 平安顺遂
 董永特意停下脚步
 恭恭敬敬对着老槐树
 磕了三个头
 
+示例2：
 输入：重生反击德国绑架我救了三个落水儿童获得了见义勇为奖
-输出：
+输出（每行≤12字）：
 重生反击德国绑架
 我救了三个落水儿童
 获得了见义勇为奖
 
+示例3：
 输入：恭恭敬敬对着老槐树磕了三个头额头磕得微微发红
-输出：
+输出（每行≤12字）：
 恭恭敬敬对着老槐树
 磕了三个头
 额头磕得微微发红
 
-【反例（绝对不要这样拆分）】
-输入：被林浩手下的人以内部高息理财的名义
+【错误示例（绝对禁止）】
+
+错误1：
+输入：相信它能庇佑全村人平安顺遂
 错误输出：
-被林浩手下的人
-以内部高息理财
-的名义
-
+相信它能庇佑全村人
+平安顺
+遂
 正确输出：
-被林浩手下的人以内部高息
-理财的名义
+相信它能庇佑全村人
+平安顺遂
 
+错误2：
 输入：恭恭敬敬对着老槐树磕了三个头
 错误输出：
 恭恭敬敬对着老槐树磕了三
@@ -226,12 +235,12 @@ async function splitWithLLM(line: string, maxChars: number): Promise<string[]> {
 恭恭敬敬对着老槐树
 磕了三个头
 
-【输出要求】
-- 只返回拆分后的行，用换行符分隔
-- 不要有任何解释或其他文字
-- 确保每一行都是语义完整的片段
-- 确保成语、固定短语、动宾结构不被拆分
-- 确保行数最少，每行尽可能接近${maxChars}字`;
+【输出格式要求】
+- 只返回拆分后的行，每行一个
+- 用换行符（\\n）分隔
+- 不要有任何解释、编号或其他文字
+- 确保每行≤${maxChars}字
+- 确保成语、短语不被拆分`;
 
     const messages = [
       { role: 'system' as const, content: systemPrompt },
@@ -240,8 +249,8 @@ async function splitWithLLM(line: string, maxChars: number): Promise<string[]> {
 
     console.log(`[LLM拆分] 调用 LLM...`);
     const response = await client.invoke(messages, {
-      model: 'doubao-seed-1-8-251228',
-      temperature: 0,
+      model: 'doubao-seed-2-0-pro-260215', // 使用更强的模型
+      temperature: 0, // 温度设为0，提高确定性
     });
 
     console.log(`[LLM拆分] LLM 响应:`, response.content);
@@ -313,6 +322,9 @@ function simpleSplit(line: string, maxChars: number): string[] {
 // POST 接口 - 流式响应
 export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
+  
+  // 提取转发头（必需）
+  const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
   
   const stream = new ReadableStream({
     async start(controller) {
@@ -425,7 +437,7 @@ export async function POST(request: NextRequest) {
             const { index, line } = longLines[i];
             
             try {
-              const splitLines = await splitWithLLM(line, maxCharsValue);
+              const splitLines = await splitWithLLM(line, maxCharsValue, customHeaders);
               // 使用splice插入到正确位置，保持顺序
               finalLines.splice(index, 1, ...splitLines);
               firstRoundCount++;
@@ -482,7 +494,7 @@ export async function POST(request: NextRequest) {
             
             try {
               // 第二轮使用更严格的拆分
-              const splitLines = await splitWithLLM(line, maxCharsValue);
+              const splitLines = await splitWithLLM(line, maxCharsValue, customHeaders);
               // 替换原行
               finalLines.splice(index, 1, ...splitLines);
               sendDebug(`第二轮拆分行 ${i + 1}/${secondRoundLongLines.length}: ${line.substring(0, 20)}... -> ${splitLines.length} 行`);
