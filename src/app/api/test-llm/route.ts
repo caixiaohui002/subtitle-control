@@ -10,10 +10,10 @@ export async function POST(request: NextRequest) {
     const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
 
     // 创建 LLM 客户端
+    // 注意：只设置 baseUrl，不设置 modelBaseUrl，因为 model.coze.com 域名无法解析
     const config = new Config({
       apiKey: process.env.COZE_WORKLOAD_IDENTITY_API_KEY,
       baseUrl: process.env.COZE_INTEGRATION_BASE_URL || 'https://api.coze.com',
-      modelBaseUrl: process.env.COZE_INTEGRATION_MODEL_BASE_URL || 'https://model.coze.com',
       timeout: 30000, // 30 秒超时
     });
 
