@@ -161,207 +161,101 @@ async function splitWithLLM(line: string, maxChars: number, customHeaders?: Reco
     return [line];
   }
 
-  console.log(`[LLM拆分] 开始拆分，文本长度: ${charCount}字，限制: ${maxChars}字`);
-  console.log(`[LLM拆分] 文本内容: ${line}`);
-
   try {
     const config = new Config();
     const client = new LLMClient(config, customHeaders);
 
-    const systemPrompt = `【任务】将文本按照语义边界拆分成多行，每行不超过${maxChars}字。
+    const systemPrompt = `【任务】按照语义边界将文本拆分成多行，保证每个片段都是完整的语义单元。
 
-【核心要求】
-1. 每行严格≤${maxChars}个汉字
+【核心规则】
+1. 每行严格≤${maxChars}字
 2. 100%保留所有字符，不能遗漏、增加或改变
-3. 必须保持成语完整（如：平安顺遂、兴高采烈、坚持不懈、恭恭敬敬）
-4. 必须保持固定短语完整（如：三个头、对着老槐树、微微发红）
-5. 必须保持动宾结构完整（如：磕了三个头、救了三个儿童）
+3. 保持成语完整性（如：平安顺遂、兴高采烈、坚持不懈）
+4. 保持固定短语完整性（如：三个头、三个落水儿童）
+5. 保持动宾结构完整性（如：磕了三个头、救了三个儿童）
 6. 按语义边界拆分（主谓之间、谓宾之间、并列短语、修饰关系）
-
-【禁止拆分的结构】
-- ❌ 四字成语：不能拆分成两行
-- ❌ 动宾短语：如"磕了三个头"不能拆成"磕了三个"+"头"
-- ❌ 介宾短语：如"对着老槐树"不能拆成"对着老"+"槐树"
-- ❌ 固定搭配：如"微微发红"不能拆成"微微"+"发红"
-
-【拆分策略】
-1. 优先在句子的停顿处拆分（主谓之间、谓宾之间）
-2. 其次在短语的边界拆分（并列短语、修饰关系）
-3. 如果必须拆分长句，尽量保持词语完整
+7. 【重要】追求行数最少化，避免过度拆分
+8. 【重要】每行尽可能接近${maxChars}字，不要拆分得太短
 
 【正确示例】
-
-示例1：
 输入：相信它能庇佑全村人平安顺遂董永特意停下脚步恭恭敬敬对着老槐树磕了三个头
-输出（每行≤12字）：
+输出：
 相信它能庇佑全村人
 平安顺遂
 董永特意停下脚步
 恭恭敬敬对着老槐树
 磕了三个头
 
-示例2：
 输入：重生反击德国绑架我救了三个落水儿童获得了见义勇为奖
-输出（每行≤12字）：
+输出：
 重生反击德国绑架
 我救了三个落水儿童
 获得了见义勇为奖
 
-示例3：
-输入：恭恭敬敬对着老槐树磕了三个头额头磕得微微发红
-输出（每行≤12字）：
-恭恭敬敬对着老槐树
-磕了三个头
-额头磕得微微发红
-
-【错误示例（绝对禁止）】
-
-错误1：
-输入：相信它能庇佑全村人平安顺遂
+【反例（不要这样拆分）】
+输入：被林浩手下的人以内部高息理财的名义
 错误输出：
-相信它能庇佑全村人
-平安顺
-遂
-正确输出：
-相信它能庇佑全村人
-平安顺遂
+被林浩手下的人
+以内部高息理财
+的名义
 
-错误2：
-输入：恭恭敬敬对着老槐树磕了三个头
-错误输出：
-恭恭敬敬对着老槐树磕了三
-个头
 正确输出：
-恭恭敬敬对着老槐树
-磕了三个头
+被林浩手下的人以内部高息
+理财的名义
 
-【输出格式要求】
-- 只返回拆分后的行，每行一个
-- 用换行符（\\n）分隔
-- 不要有任何解释、编号或其他文字
-- 确保每行≤${maxChars}字
-- 确保成语、短语不被拆分`;
+【输出要求】
+- 只返回拆分后的行，用换行符分隔
+- 不要有任何解释或其他文字
+- 确保每一行都是语义完整的片段
+- 确保行数最少，每行尽可能接近${maxChars}字`;
 
     const messages = [
       { role: 'system' as const, content: systemPrompt },
       { role: 'user' as const, content: `请将以下文本拆分成多行，每行≤${maxChars}字：\n\n${line}` }
     ];
 
-    console.log(`[LLM拆分] 调用 LLM...`);
-    const response = await client.invoke(messages, {
-      model: 'doubao-seed-2-0-pro-260215', // 使用更强的模型
-      temperature: 0, // 温度设为0，提高确定性
+    // 添加超时处理（30秒）
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('LLM调用超时')), 30000);
     });
 
-    console.log(`[LLM拆分] LLM 响应:`, response.content);
+    const llmPromise = client.invoke(messages, {
+      model: 'doubao-seed-1-8-251228',
+      temperature: 0,
+    });
+
+    let response;
+    try {
+      response = await Promise.race([llmPromise, timeoutPromise]);
+    } catch (timeoutError) {
+      console.error('LLM调用超时，使用简单拆分');
+      return simpleSplit(line, maxChars);
+    }
 
     const result = response.content.trim();
     const lines = result.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-
-    console.log(`[LLM拆分] 拆分结果: ${JSON.stringify(lines)}`);
 
     // 验证字符数是否一致
     const originalCharCount = countChineseChars(line);
     const resultCharCount = lines.reduce((sum, l) => sum + countChineseChars(l), 0);
 
-    console.log(`[LLM拆分] 字符数验证: 原始${originalCharCount}字，结果${resultCharCount}字`);
-
     if (originalCharCount !== resultCharCount) {
-      console.warn(`[LLM拆分] 字符数不一致，使用简单拆分`);
+      console.warn(`LLM拆分字符数不一致：原始${originalCharCount}字，结果${resultCharCount}字，使用简单拆分`);
       return simpleSplit(line, maxChars);
     }
 
-    // 【禁用】合并相邻的短行，避免破坏语义拆分结果
-    // const optimizedLines = optimizeAfterSplit(lines, maxChars);
-    // console.log(`[LLM拆分] 优化后结果: ${JSON.stringify(optimizedLines)}`);
-    // return optimizedLines;
+    // 【优化】合并相邻的短行，追求行数最少，每行尽可能接近 maxChars
+    const optimizedLines = optimizeAfterSplit(lines, maxChars);
 
-    // 直接返回 LLM 的拆分结果，不做任何优化
-    console.log(`[LLM拆分] 直接返回 LLM 拆分结果（不做优化）`);
-    
-    // 后处理：检测并修复被拆分的成语和固定短语
-    const fixedLines = fixSplitPhrases(lines, maxChars);
-    console.log(`[LLM拆分] 后处理结果: ${JSON.stringify(fixedLines)}`);
-    
-    return fixedLines;
+    return optimizedLines;
   } catch (error) {
-    console.error('[LLM拆分] 拆分失败，使用简单拆分，错误:', error);
+    console.error('LLM拆分失败，使用简单拆分：', error);
     return simpleSplit(line, maxChars);
   }
 }
 
-// 常见成语和固定短语列表
-const COMMON_PHRASES = [
-  '平安顺遂', '兴高采烈', '坚持不懈', '恭恭敬敬', '磕了三个头',
-  '救了三个儿童', '对着老槐树', '微微发红', '额头磕得微微发红',
-  '三个头', '三个落水儿童', '见义勇为奖', '获得见义勇为奖',
-  '重生反击', '德国绑架', '内部高息', '理财的名义',
-  '内部高息理财', '理财的名义', '林浩手下', '手中的人',
-  '高息理财', '内部高息', '以内部', '高息理财的名义',
-  '磕了三', '个头', '三个', '头'
-];
-
-// 后处理：检测并合并被拆分的成语和固定短语
-function fixSplitPhrases(lines: string[], maxChars: number): string[] {
-  const result: string[] = [...lines];
-  let fixed = true;
-
-  while (fixed) {
-    fixed = false;
-
-    for (let i = 0; i < result.length - 1; i++) {
-      const currentLine = result[i];
-      const nextLine = result[i + 1];
-      
-      // 检查两行合并后是否包含常见成语或短语
-      const combined = currentLine + nextLine;
-      
-      // 检查是否有常见短语被拆分
-      let foundPhrase = '';
-      for (const phrase of COMMON_PHRASES) {
-        if (combined.includes(phrase)) {
-          foundPhrase = phrase;
-          break;
-        }
-      }
-      
-      if (foundPhrase) {
-        console.log(`[后处理] 发现被拆分的短语: "${foundPhrase}"`);
-        console.log(`[后处理] 合并前: "${currentLine}" + "${nextLine}"`);
-        
-        // 尝试在短语的边界拆分
-        const phraseIndex = combined.indexOf(foundPhrase);
-        const beforePhrase = combined.substring(0, phraseIndex);
-        const afterPhrase = combined.substring(phraseIndex + foundPhrase.length);
-        
-        // 重新构建结果
-        const newLines: string[] = [];
-        if (beforePhrase) newLines.push(beforePhrase);
-        newLines.push(foundPhrase); // 保持短语完整
-        if (afterPhrase) newLines.push(afterPhrase);
-        
-        // 检查每行是否超过 maxChars
-        const allValid = newLines.every(line => countChineseChars(line) <= maxChars);
-        
-        if (allValid) {
-          console.log(`[后处理] 合并后: ${JSON.stringify(newLines)}`);
-          result.splice(i, 2, ...newLines);
-          fixed = true;
-          break;
-        } else {
-          console.log(`[后处理] 合并后超出字数限制，跳过`);
-        }
-      }
-    }
-  }
-  
-  return result;
-}
-
 // 简单拆分（备用方案）
 function simpleSplit(line: string, maxChars: number): string[] {
-  console.warn(`[简单拆分] 使用简单拆分（非语义），文本: ${line.substring(0, 30)}...，限制: ${maxChars}字`);
-
   const result: string[] = [];
   let current = '';
 
@@ -380,21 +274,10 @@ function simpleSplit(line: string, maxChars: number): string[] {
     result.push(current);
   }
 
-  console.warn(`[简单拆分] 简单拆分结果: ${JSON.stringify(result)}`);
+  // 【优化】合并相邻的短行，追求行数最少
+  const optimizedLines = optimizeAfterSplit(result, maxChars);
 
-  // 【禁用】合并相邻的短行，避免破坏语义
-  // const optimizedLines = optimizeAfterSplit(result, maxChars);
-  // console.warn(`[简单拆分] 优化后结果: ${JSON.stringify(optimizedLines)}`);
-  // return optimizedLines;
-
-  // 直接返回简单拆分结果
-  const simpleResult = result;
-  
-  // 后处理：检测并修复被拆分的成语和固定短语
-  const fixedLines = fixSplitPhrases(simpleResult, maxChars);
-  console.warn(`[简单拆分] 后处理结果: ${JSON.stringify(fixedLines)}`);
-  
-  return fixedLines;
+  return optimizedLines;
 }
 
 
