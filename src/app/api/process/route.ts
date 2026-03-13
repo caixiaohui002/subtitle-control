@@ -163,10 +163,75 @@ function splitByRulesWrapper(line: string, maxChars: number): string[] {
   }
 }
 
-// 使用 LLM 进行语义拆分（已禁用，使用规则拆分替代）
+// 使用 LLM 进行语义拆分（优先使用）
 async function splitWithLLM(line: string, maxChars: number, customHeaders?: Record<string, string>): Promise<string[]> {
-  console.log('[LLM拆分] LLM拆分已禁用，使用规则拆分替代');
-  return splitByRulesWrapper(line, maxChars);
+  console.log('[LLM拆分] 开始LLM拆分，文本长度:', line.length);
+  
+  try {
+    // 创建 LLM 客户端
+    const config = new Config({
+      timeout: 25000, // 25秒超时（留5秒给处理）
+    });
+    
+    const llmClient = new LLMClient(config, customHeaders);
+
+    // 构建提示词
+    const prompt = `你是一个专业的文本拆分助手。请将以下文本拆分成多行，要求：
+1. 每行纯汉字数严格≤${maxChars}字
+2. 按语义边界拆分（如主谓宾结构、短语边界），保持短语完整性
+3. 保护成语、固定短语不被拆分
+4. 追求行数最少化，每行尽可能接近${maxChars}字
+5. 100%保留输入文本的所有文字、语序、内容，一字不增、一字不减、一字不改
+
+原文：${line}
+
+请按以下格式返回（纯JSON，不要包含其他文字）：
+${JSON.stringify({
+  lines: [
+    "第一行",
+    "第二行"
+  ]
+})}`;
+
+    const response = await llmClient.invoke(
+      [
+        {
+          role: 'system',
+          content: '你是一个专业的文本拆分助手，只返回JSON格式，不包含其他文字。'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      {
+        temperature: 0.3, // 降低随机性
+        // 不指定模型，使用默认模型
+      }
+    );
+
+    const resultText = response.content || '';
+    console.log('[LLM拆分] LLM返回:', resultText.substring(0, 200));
+
+    // 解析 JSON
+    const jsonMatch = resultText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('LLM返回的不是JSON格式');
+    }
+
+    const jsonText = jsonMatch[0];
+    const result = JSON.parse(jsonText);
+
+    if (!result.lines || !Array.isArray(result.lines)) {
+      throw new Error('LLM返回格式错误：缺少lines字段');
+    }
+
+    console.log('[LLM拆分] 拆分成功，共', result.lines.length, '行');
+    return result.lines;
+  } catch (error) {
+    console.error('[LLM拆分] LLM调用失败:', error);
+    throw error;
+  }
 }
 
 // 简单拆分（备用方案）
@@ -314,15 +379,26 @@ export async function POST(request: NextRequest) {
             const { index, line } = longLines[i];
             
             try {
-              const splitLines = await splitWithLLM(line, maxCharsValue, customHeaders);
+              // 使用 Promise.race 实现超时处理
+              const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('LLM 调用超时')), 30000);
+              });
+
+              const splitLines = await Promise.race([
+                splitWithLLM(line, maxCharsValue, customHeaders),
+                timeoutPromise
+              ]) as string[];
+              
               // 使用splice插入到正确位置，保持顺序
               finalLines.splice(index, 1, ...splitLines);
               firstRoundCount++;
               sendDebug(`LLM 拆分行 ${longLines.length - i}/${longLines.length}: ${line.substring(0, 20)}... -> ${splitLines.length} 行`);
             } catch (error) {
-              console.error(`LLM 拆分失败，使用简单拆分:`, error);
-              const splitLines = simpleSplit(line, maxCharsValue);
+              console.error(`LLM 拆分失败，使用规则拆分:`, error);
+              // LLM 失败或超时，降级到规则拆分
+              const splitLines = splitByRulesWrapper(line, maxCharsValue);
               finalLines.splice(index, 1, ...splitLines);
+              sendDebug(`降级到规则拆分: ${line.substring(0, 20)}... -> ${splitLines.length} 行`);
             }
 
             // 发送进度
@@ -370,15 +446,25 @@ export async function POST(request: NextRequest) {
             const { index, line } = secondRoundLongLines[i];
             
             try {
-              // 第二轮使用更严格的拆分
-              const splitLines = await splitWithLLM(line, maxCharsValue, customHeaders);
+              // 第二轮使用更严格的拆分，也添加超时处理
+              const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('LLM 调用超时')), 30000);
+              });
+
+              const splitLines = await Promise.race([
+                splitWithLLM(line, maxCharsValue, customHeaders),
+                timeoutPromise
+              ]) as string[];
+              
               // 替换原行
               finalLines.splice(index, 1, ...splitLines);
               sendDebug(`第二轮拆分行 ${i + 1}/${secondRoundLongLines.length}: ${line.substring(0, 20)}... -> ${splitLines.length} 行`);
             } catch (error) {
-              console.error(`第二轮 LLM 拆分失败，使用简单拆分:`, error);
-              const splitLines = simpleSplit(line, maxCharsValue);
+              console.error(`第二轮 LLM 拆分失败，使用规则拆分:`, error);
+              // LLM 失败或超时，降级到规则拆分
+              const splitLines = splitByRulesWrapper(line, maxCharsValue);
               finalLines.splice(index, 1, ...splitLines);
+              sendDebug(`降级到规则拆分: ${line.substring(0, 20)}... -> ${splitLines.length} 行`);
             }
 
             // 发送进度
